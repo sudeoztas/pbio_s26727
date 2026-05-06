@@ -28,6 +28,29 @@ def generate_sequence(length: int) -> str:
     return ''.join(random.choices(STANDARD_NUCLEOTIDES, k=length))
 
 
+def generate_sequence_weighted(length: int, weights: dict) -> str:
+    """Returns a random DNA sequence using custom nucleotide probabilities.
+    weights is a dict with keys A, C, G, T and float percentage values.
+    """
+    w = [weights[n] for n in STANDARD_NUCLEOTIDES]
+    return ''.join(random.choices(STANDARD_NUCLEOTIDES, weights=w, k=length))
+
+
+def generate_sequence_iupac(length: int, ambiguous_prob: float) -> str:
+    """Returns a random DNA sequence that may contain IUPAC ambiguous characters.
+    Each position has ambiguous_prob probability of being an ambiguous character.
+    Reference: https://www.bioinformatics.org/sms/iupac.html
+    """
+    ambiguous_chars = list(IUPAC_MAP.keys())
+    result = []
+    for _ in range(length):
+        if random.random() < ambiguous_prob:
+            result.append(random.choice(ambiguous_chars))
+        else:
+            result.append(random.choice(STANDARD_NUCLEOTIDES))
+    return ''.join(result)
+
+
 def calculate_stats(sequence: str) -> dict:
     """Returns a dictionary of sequence statistics.
     Keys: 'A', 'C', 'G', 'T' (float, %), 'GC' (float, %), 'gc_ratio_A' (float, %).
@@ -94,3 +117,232 @@ def validate_id(prompt: str) -> str:
         if seq_id and ' ' not in seq_id and '\t' not in seq_id:
             return seq_id
         print("Error: ID cannot be empty or contain whitespace.")
+
+
+def get_weighted_distribution() -> dict:
+    """Prompts the user to enter percentage for each nucleotide.
+    Validates that all four values sum to exactly 100.
+    Returns a dict with keys A, C, G, T.
+    """
+    while True:
+        print("Enter nucleotide percentages (must sum to 100):")
+        try:
+            a = float(input("  A (%): "))
+            c = float(input("  C (%): "))
+            g = float(input("  G (%): "))
+            t = float(input("  T (%): "))
+            if abs(a + c + g + t - 100) < 0.01:
+                return {'A': a, 'C': c, 'G': g, 'T': t}
+            print("Error: percentages must sum to 100.")
+        except ValueError:
+            print("Error: enter numeric values.")
+
+
+def find_motif(sequence: str, motif: str) -> list:
+    """Searches for all occurrences of a motif in the sequence.
+    Returns a list of 1-based positions (biological convention).
+    """
+    positions = []
+    seq = sequence.upper()
+    motif = motif.upper()
+    start = 0
+    while True:
+        pos = seq.find(motif, start)
+        if pos == -1:
+            break
+        positions.append(pos + 1)
+        start = pos + 1
+    return positions
+
+
+def complement(sequence: str) -> str:
+    """Returns the complementary DNA strand (5' to 3' direction preserved).
+    Also handles IUPAC ambiguous characters by complementing each symbol.
+    """
+    iupac_complement = {
+        'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C',
+        'R': 'Y', 'Y': 'R', 'S': 'S', 'W': 'W',
+        'K': 'M', 'M': 'K', 'B': 'V', 'V': 'B',
+        'D': 'H', 'H': 'D', 'N': 'N',
+        'a': 't', 't': 'a', 'c': 'g', 'g': 'c',
+    }
+    return ''.join(iupac_complement.get(c, c) for c in sequence)
+
+
+def reverse_complement(sequence: str) -> str:
+    """Returns the reverse complementary DNA strand."""
+    return complement(sequence)[::-1]
+
+
+def transcribe(sequence: str) -> str:
+    """Returns the mRNA sequence by replacing T with U (in silico transcription)."""
+    return sequence.upper().replace('T', 'U')
+
+
+def translate(sequence: str) -> str:
+    """Translates a DNA sequence into an amino acid sequence using the standard codon table.
+    Stops translation at the first stop codon (*).
+    Reference: https://www.bioinformatics.org/JaMBW/2/3/TranslationTables.html
+    """
+    codon_table = {
+        'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L',
+        'CTT': 'L', 'CTC': 'L', 'CTA': 'L', 'CTG': 'L',
+        'ATT': 'I', 'ATC': 'I', 'ATA': 'I', 'ATG': 'M',
+        'GTT': 'V', 'GTC': 'V', 'GTA': 'V', 'GTG': 'V',
+        'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
+        'CCT': 'P', 'CCC': 'P', 'CCA': 'P', 'CCG': 'P',
+        'ACT': 'T', 'ACC': 'T', 'ACA': 'T', 'ACG': 'T',
+        'GCT': 'A', 'GCC': 'A', 'GCA': 'A', 'GCG': 'A',
+        'TAT': 'Y', 'TAC': 'Y', 'TAA': '*', 'TAG': '*',
+        'CAT': 'H', 'CAC': 'H', 'CAA': 'Q', 'CAG': 'Q',
+        'AAT': 'N', 'AAC': 'N', 'AAA': 'K', 'AAG': 'K',
+        'GAT': 'D', 'GAC': 'D', 'GAA': 'E', 'GAG': 'E',
+        'TGT': 'C', 'TGC': 'C', 'TGA': '*', 'TGG': 'W',
+        'CGT': 'R', 'CGC': 'R', 'CGA': 'R', 'CGG': 'R',
+        'AGT': 'S', 'AGC': 'S', 'AGA': 'R', 'AGG': 'R',
+        'GGT': 'G', 'GGC': 'G', 'GGA': 'G', 'GGG': 'G',
+    }
+    seq = sequence.upper()
+    protein = []
+    for i in range(0, len(seq) - 2, 3):
+        codon = seq[i:i + 3]
+        aa = codon_table.get(codon, '?')
+        if aa == '*':
+            break
+        protein.append(aa)
+    return ''.join(protein)
+
+
+def sliding_window_gc(sequence: str, window: int, step: int) -> list:
+    """Calculates GC content in a sliding window across the sequence.
+    Returns a list of dicts with keys: start_position, gc_content.
+    """
+    results = []
+    seq = sequence.upper()
+    for i in range(0, len(seq) - window + 1, step):
+        w = seq[i:i + window]
+        gc = (w.count('G') + w.count('C')) / len(w) * 100
+        results.append({'start_position': i + 1, 'gc_content': round(gc, 2)})
+    return results
+
+
+def save_csv(data: list, filename: str):
+    """Saves sliding window GC data to a CSV file with headers start_position and gc_content."""
+    with open(filename, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['start_position', 'gc_content'])
+        writer.writeheader()
+        writer.writerows(data)
+
+
+def plot_gc_content(data: list, filename: str):
+    """Generates a line chart of GC content along the sequence from sliding window data.
+    Saves the chart as a PNG file using matplotlib.
+    """
+    positions = [d['start_position'] for d in data]
+    gc_values = [d['gc_content'] for d in data]
+    plt.figure(figsize=(12, 5))
+    plt.plot(positions, gc_values, color='steelblue', linewidth=1)
+    plt.title('GC Content Along the Sequence (Sliding Window)')
+    plt.xlabel('Position (nt)')
+    plt.ylabel('GC Content (%)')
+    plt.ylim(0, 100)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
+
+def find_orfs(sequence: str, min_length: int = 100) -> list:
+    """Finds all open reading frames (ORFs) in all 3 reading frames.
+    An ORF starts at ATG and ends at the nearest stop codon (TAA/TAG/TGA).
+    Only ORFs with length >= min_length nucleotides are returned.
+    Returns a list of dicts with keys: start, end, length, frame (all 1-based positions).
+    """
+    orfs = []
+    seq = sequence.upper()
+    stop_codons = {'TAA', 'TAG', 'TGA'}
+    for frame in range(3):
+        i = frame
+        while i < len(seq) - 2:
+            codon = seq[i:i + 3]
+            if codon == 'ATG':
+                found_stop = False
+                for j in range(i + 3, len(seq) - 2, 3):
+                    stop = seq[j:j + 3]
+                    if stop in stop_codons:
+                        length = j + 3 - i
+                        if length >= min_length:
+                            orfs.append({
+                                'start': i + 1,
+                                'end': j + 3,
+                                'length': length,
+                                'frame': frame + 1
+                            })
+                        i = j + 3
+                        found_stop = True
+                        break
+                if not found_stop:
+                    i += 3
+            else:
+                i += 3
+    return orfs
+
+
+def batch_mode():
+    """Batch mode: generates multiple sequences and saves them all to a single multi-FASTA file.
+    Each sequence gets a unique auto-incremented ID (e.g. Seq_001, Seq_002, ...).
+    The # EOF_1 marker appears only once at the very end of the file.
+    """
+    count = validate_positive_int("How many sequences to generate? ", 1, 1000)
+    length = validate_positive_int("Enter sequence length for each sequence: ")
+    description = input("Enter a description (optional, same for all): ")
+    name = input("Enter your name: ")
+    filename = "multi_sequences.fasta"
+    with open(filename, 'w') as f:
+        for i in range(1, count + 1):
+            seq_id = f"Seq_{i:03d}"
+            seq = generate_sequence(length)
+            seq_with_name = insert_name(seq, name)
+            f.write(format_fasta_record(seq_id, description, seq_with_name))
+        f.write("# EOF_1\n")
+    print(f"Saved {count} sequences to {filename}")
+
+
+def validate_fasta_file(filepath: str):
+    """Loads a user-supplied FASTA file and validates its format.
+    Checks header presence, allowed characters, and reports all errors found.
+    """
+    allowed = set('ACGTUacgtu' + ''.join(IUPAC_MAP.keys()) + ''.join(k.lower() for k in IUPAC_MAP.keys()))
+    errors = []
+    try:
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        print(f"Error: file '{filepath}' not found.")
+        return
+
+    if not lines or not lines[0].startswith('>'):
+        errors.append("Line 1: Missing header line starting with '>'.")
+
+    in_sequence = False
+    line_widths = []
+    for i, line in enumerate(lines, 1):
+        line = line.rstrip('\n')
+        if line.startswith('>'):
+            in_sequence = True
+            line_widths = []
+            continue
+        if line.startswith('#') or line == '':
+            continue
+        if in_sequence:
+            invalid = [c for c in line if c not in allowed]
+            if invalid:
+                errors.append(f"Line {i}: Invalid characters found: {set(invalid)}")
+            line_widths.append(len(line))
+
+    if errors:
+        print("Validation errors found:")
+        for e in errors:
+            print(f"  - {e}")
+    else:
+        print("FASTA file is valid. No errors found.")
