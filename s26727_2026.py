@@ -346,3 +346,128 @@ def validate_fasta_file(filepath: str):
             print(f"  - {e}")
     else:
         print("FASTA file is valid. No errors found.")
+
+
+def main():
+    """Main function. Handles user interaction, calls all feature functions, and writes output.
+    Supports single sequence mode and batch mode with all 11 extended bioinformatics features.
+    """
+    print("=== DNA FASTA Generator ===\n")
+    print("1) Single sequence")
+    print("2) Batch mode")
+    mode = input("Choose mode (1/2): ").strip()
+
+    if mode == '2':
+        batch_mode()
+        return
+
+    print("\nSequence generation method:")
+    print("  1) Standard random (equal distribution)")
+    print("  2) Custom nucleotide distribution")
+    print("  3) IUPAC mode (with ambiguous characters)")
+    gen_mode = input("Choose (1/2/3): ").strip()
+
+    weights = None
+    iupac_prob = 0.0
+
+    if gen_mode == '2':
+        weights = get_weighted_distribution()
+    elif gen_mode == '3':
+        while True:
+            try:
+                iupac_prob = float(input("Probability of ambiguous character per position (0.0 - 1.0): "))
+                if 0.0 <= iupac_prob <= 1.0:
+                    break
+                print("Error: value must be between 0.0 and 1.0.")
+            except ValueError:
+                print("Error: enter a numeric value.")
+
+    length = validate_positive_int("Enter sequence length: ")
+    seq_id = validate_id("Enter sequence ID: ")
+    description = input("Enter a description of the sequence: ")
+    name = input("Enter your name: ")
+
+    if gen_mode == '2' and weights:
+        sequence = generate_sequence_weighted(length, weights)
+    elif gen_mode == '3':
+        sequence = generate_sequence_iupac(length, iupac_prob)
+    else:
+        sequence = generate_sequence(length)
+
+    stats = calculate_stats(sequence)
+
+    do_motif = input("Search for a motif? (y/n): ").strip().lower() == 'y'
+    if do_motif:
+        motif = input("Enter motif: ").strip().upper()
+        positions = find_motif(sequence, motif)
+        if positions:
+            print(f"Motif '{motif}' found at positions: {positions}")
+        else:
+            print(f"Motif '{motif}' not found.")
+
+    do_complement = input("Generate complement & reverse complement? (y/n): ").strip().lower() == 'y'
+    do_transcribe = input("Generate mRNA transcription? (y/n): ").strip().lower() == 'y'
+    do_translate = input("Translate to protein? (y/n): ").strip().lower() == 'y'
+    do_orfs = input("Find ORFs? (y/n): ").strip().lower() == 'y'
+    do_sliding = input("Sliding window GC analysis + chart? (y/n): ").strip().lower() == 'y'
+    do_validate = input("Validate an existing FASTA file? (y/n): ").strip().lower() == 'y'
+
+    seq_with_name = insert_name(sequence, name)
+
+    records = [format_fasta_record(seq_id, description, seq_with_name)]
+
+    if do_complement:
+        comp_seq = complement(sequence)
+        rev_comp_seq = reverse_complement(sequence)
+        records.append(format_fasta_record(seq_id + "_comp", "complementary strand", comp_seq))
+        records.append(format_fasta_record(seq_id + "_revcomp", "reverse complementary strand", rev_comp_seq))
+
+    if do_transcribe:
+        mrna = transcribe(sequence)
+        records.append(format_fasta_record(seq_id + "_mRNA", "mRNA transcription (T->U)", mrna))
+
+    if do_translate:
+        protein = translate(sequence)
+        records.append(format_fasta_record(seq_id + "_protein", "translated protein sequence", protein))
+
+    filename = f"{seq_id}.fasta"
+    with open(filename, 'w') as f:
+        for record in records:
+            f.write(record)
+        f.write("# EOF_1\n")
+
+    print(f"\nSequence saved to file: {filename}")
+
+    print(f"\nSequence statistics (n={length}):")
+    for nuc in STANDARD_NUCLEOTIDES:
+        print(f"  {nuc}: {stats[nuc]:.2f}%")
+    print(f"  GC-content: {stats['GC']:.2f}%")
+
+    if do_orfs:
+        min_orf = validate_positive_int("Minimum ORF length (nt): ", 1, 100_000)
+        orfs = find_orfs(sequence, min_orf)
+        if orfs:
+            print(f"\nFound {len(orfs)} ORF(s):")
+            for orf in orfs:
+                print(f"  Frame {orf['frame']}: start={orf['start']}, end={orf['end']}, length={orf['length']} nt")
+        else:
+            print("No ORFs found.")
+
+    if do_sliding:
+        window = validate_positive_int("Window size (nt): ", 1, length)
+        step = validate_positive_int("Step size (nt): ", 1, length)
+        gc_data = sliding_window_gc(sequence, window, step)
+        csv_file = f"{seq_id}_gc_sliding.csv"
+        save_csv(gc_data, csv_file)
+        print(f"Sliding window GC data saved to {csv_file}")
+        chart_file = f"{seq_id}_gc_chart.png"
+        plot_gc_content(gc_data, chart_file)
+        print(f"GC content chart saved to {chart_file}")
+
+    if do_validate:
+        fasta_path = input("Enter path to FASTA file to validate: ").strip()
+        validate_fasta_file(fasta_path)
+
+
+if __name__ == "__main__":
+    main()
