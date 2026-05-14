@@ -52,17 +52,12 @@ def generate_sequence_iupac(length: int, ambiguous_prob: float) -> str:
 
 
 def calculate_stats(sequence: str) -> dict:
-    """Returns a dictionary of sequence statistics.
-    Keys: 'A', 'C', 'G', 'T' (float, %), 'GC' (float, %), 'gc_ratio_A' (float, %).
-    Only counts standard nucleotides, ignores embedded name characters and IUPAC ambiguous chars.
-    """
     seq = ''.join(c for c in sequence if c.upper() in 'ACGT')
     n = len(seq)
     stats = {}
     for nuc in STANDARD_NUCLEOTIDES:
         stats[nuc] = (seq.upper().count(nuc) / n) * 100
     stats['GC'] = stats['G'] + stats['C']
-    stats['gc_ratio_A'] = stats['GC']
     return stats
 
 
@@ -84,13 +79,6 @@ def format_fasta_record(seq_id: str, description: str, sequence: str, line_width
     for i in range(0, len(sequence), line_width):
         lines.append(sequence[i:i + line_width])
     return '\n'.join(lines) + '\n'
-
-
-def format_fasta(seq_id: str, description: str, sequence: str, line_width: int = 80) -> str:
-    """Returns a complete single-record FASTA file content as a string.
-    Appends the required # EOF_1 marker at the very end.
-    """
-    return format_fasta_record(seq_id, description, sequence, line_width) + "# EOF_1\n"
 
 
 def validate_positive_int(prompt: str, min_val: int = 1, max_val: int = 100_000) -> int:
@@ -289,10 +277,6 @@ def find_orfs(sequence: str, min_length: int = 100) -> list:
 
 
 def batch_mode():
-    """Batch mode: generates multiple sequences and saves them all to a single multi-FASTA file.
-    Each sequence gets a unique auto-incremented ID (e.g. Seq_001, Seq_002, ...).
-    The # EOF_1 marker appears only once at the very end of the file.
-    """
     count = validate_positive_int("How many sequences to generate? ", 1, 1000)
     length = validate_positive_int("Enter sequence length for each sequence: ")
     description = input("Enter a description (optional, same for all): ")
@@ -304,7 +288,6 @@ def batch_mode():
             seq = generate_sequence(length)
             seq_with_name = insert_name(seq, name)
             f.write(format_fasta_record(seq_id, description, seq_with_name))
-        f.write("# EOF_1\n")
     print(f"Saved {count} sequences to {filename}")
 
 
@@ -434,7 +417,6 @@ def main():
     with open(filename, 'w') as f:
         for record in records:
             f.write(record)
-        f.write("# EOF_1\n")
 
     print(f"\nSequence saved to file: {filename}")
 
